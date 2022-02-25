@@ -1,4 +1,3 @@
-
 class RiscvInstruction:
     pass
 
