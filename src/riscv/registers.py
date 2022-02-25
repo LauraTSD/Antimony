@@ -2,11 +2,11 @@ from enum import Enum
 
 
 class RiscvRegister(Enum):
-    X0 = Zero = 0
+    X0 = Zero = 0  # read only
     X1 = Ra = 1
     X2 = Sp = 2
     X3 = Gp = 3
-    X4 = Tp = 4
+    X4 = Tp = 4  # not used in the symbolic store
     X5 = T0 = 5
     X6 = T1 = 6
     X7 = T2 = 7

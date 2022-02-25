@@ -28,5 +28,5 @@ class Program:
     def get_instruction(self, pc: Address) -> RiscvInstruction:
         raise NotImplemented
 
-    def initialize_store(self) -> SymbolicStore:
+    def initialize_store(self, initial_pc: Address) -> SymbolicStore:
         raise NotImplemented

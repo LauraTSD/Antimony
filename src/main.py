@@ -9,7 +9,7 @@ class SymbolicExecutor:
 
     def __init__(self, program: Program, start_symbol: str):
         start_address = program.address_of_symbol(start_symbol)
-        self.executor = SingleExecutor(program, start_address)
+        self.executor = SingleExecutor(program, program.initialize_store(start_address))
 
     def run(self):
         while True:
