@@ -4,7 +4,7 @@ import copy
 
 from src.constraints import Constraint, BitVector
 from src.riscv.registers import RiscvRegister
-from src.program import Address
+from src.address import Address
 from src.vulnerability import WriteToPC
 
 
@@ -36,6 +36,8 @@ class SymbolicStore:
     def set_register(self, reg: RiscvRegister, value: Constraint):
         if reg == RiscvRegister.Zero:
             # TODO: log this. It's not an error, but it's useful to know
+            # TODO: DONT, for some instruction sequences, writing to r0 and discarding
+            #       results is completely expected. For example `j test` == `jal x0, test`
             return
 
         if reg == RiscvRegister.Tp:

@@ -4,7 +4,8 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from src.constraints import BitVector
-from src.program import Address, Program
+from src.program import Program
+from src.address import Address
 from src.riscv.instructions import *
 from src.symbolic_store import SymbolicStore
 

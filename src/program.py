@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
-from io import BytesIO
 
-from typing import TYPE_CHECKING, IO
+from typing import TYPE_CHECKING, IO, Optional
 
+from src.address import Address
+from src.instruction_cache import InstructionCache
 from src.riscv.instructions import RiscvInstruction
 import subprocess
-from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import Symbol
+from pygdbmi.gdbcontroller import GdbController
+
+from src.riscv.parse import parse_instruction
 
 if TYPE_CHECKING:
     from src.symbolic_store import SymbolicStore
@@ -17,33 +21,68 @@ if TYPE_CHECKING:
 
 script_path = os.path.dirname(os.path.abspath(__file__))
 
+parse_get_symbol = re.compile(r".*Symbol .* is a .* at address 0x([0-9a-f]*)\.?\n?")
+parse_entry_point = re.compile(r".*Entry.* 0x([0-9a-f]*)\.?\n?")
+parse_instruction_text = re.compile(r".*0x.*:(.*)\n?.*")
+parse_instruction_bytes = re.compile(r".*0x.*:.*0x(.*)\\n.*")
 
-class Address(int):
+
+class Symbol(str):
+    """
+    symbol in an ELF binary
+    """
     pass
 
 
 class Program:
-    elffile: ELFFile
+    file: IO  # to keep temporary files alive and not gc them
+    gdb: GdbController
 
-    def __init__(self, b: IO):
-        self.elffile = ELFFile(b)
+    cache: InstructionCache
+
+    def __init__(self, b: bytes):
+        f = tempfile.NamedTemporaryFile("w+b")
+        f.write(b)
+        f.seek(0)
+
+        controller = GdbController(command=[
+            f"{script_path}/../toolchain/bin/riscv64-unknown-linux-gnu-gdb",
+            "--interpreter=mi3",
+            f.name
+        ])
+
+        # write returns all startup logs from gdb. This basically discards them
+        controller.write("")
+
+        self.file = f
+        self.gdb = controller
+
+    def __del__(self):
+        self.gdb.exit()
+        self.file.close()
 
     @classmethod
     def from_elf_bytes(cls, b: bytes) -> Program:
-        io = BytesIO()
-        io.write(b)
-        io.seek(0)
-        return cls(io)
+        return cls(b)
 
     @classmethod
-    def from_c_file(cls, filename: str) -> Program:
+    def from_c_string(cls, program: str, debug: bool = True) -> Program:
+        with tempfile.NamedTemporaryFile("w+") as f:
+            f.write(program)
+            f.seek(0)
+            return cls.from_c_file(f.name, debug)
+
+    @classmethod
+    def from_c_file(cls, filename: str, debug: bool = True) -> Program:
         with tempfile.NamedTemporaryFile("w+b") as f:
             cmd = [
                 f"{script_path}/../toolchain/bin/riscv64-unknown-linux-gnu-gcc",
+                "-x", "c",
                 "-o", f.name,
                 filename,
                 "-march=rv64i",
                 "-mabi=lp64",
+                "-g" if debug else "",
             ]
             print(f"running {' '.join(cmd)}")
             output = subprocess.run(cmd)
@@ -51,30 +90,65 @@ class Program:
                 raise Exception("couldn't compile riscv code")
 
             f.seek(0)
-            return cls(f)
+            return cls(f.read())
 
     @classmethod
     def from_elf_file(cls, filename: str) -> Program:
         with open(filename, "rb") as f:
-            return cls(f)
+            return cls(f.read())
 
-    def address_of_symbol(self, symbol_name: str, executable: bool = False) -> Address:
-        found_symbols: list[Symbol] = []
+    def address_of_symbol(self, symbol: Symbol) -> Optional[Address]:
+        """
+        :param symbol: the symbol to look for
+        :return: the address of the symbol or None. None may be because
+        a) the symbol wasn't in the file
+        b) there were no debugging symbols
+        """
 
-        for section in self.elffile.iter_sections(type="SHT_PROGBITS" if executable else None):
-            if (symbols := section.get_symbol_by_name(symbol_name)) is not None:
-                found_symbols.extend(symbols)
+        addresses = set()
 
-        if len(found_symbols) == 0:
-            raise ValueError("symbol not found")
-        elif len(found_symbols) == 1:
-            symbol = found_symbols[0]
-            print(symbol)
+        response = self.gdb.write(f"info address {str(symbol)}")
+        for i in filter(lambda r: r["type"] == "console" and "Symbol" in r["payload"], response):
+            if (m := parse_get_symbol.match(i["payload"])) is not None:
+                addresses.add(Address(int(m.group(1), 16)))
+
+        if len(addresses) > 1:
+            raise ValueError(f"Somehow got multiple addresses for symbol {symbol}")
+        elif len(addresses) == 0:
+            return None
         else:
-            raise ValueError(f"found multiple symbols with that name ({symbol_name})")
+            return addresses.pop()
 
-    def get_instruction(self, pc: Address) -> RiscvInstruction:
-        raise NotImplemented
+    def get_instruction_disassembly_string(self, pc: Address) -> str:
+        response = self.gdb.write(f"disassemble {hex(pc)}, +1")
+
+        for i in filter(lambda r: r["type"] == "console" and "Dump of assembler" not in r["payload"], response):
+            if (m := parse_instruction_text.match(i["payload"])) is not None:
+                instruction = m.group(1)
+                return instruction.strip().replace("\\t", " ").replace("\\n", " ")
+
+    def get_instruction_bytes(self, pc: Address) -> RiscvInstruction:
+        response = self.gdb.write(f"x/1wx {hex(pc)}")
+
+        for i in filter(lambda r: r["type"] == "console", response):
+            if (m := parse_instruction_bytes.match(i["payload"])) is not None:
+                instruction = m.group(1)
+                return parse_instruction(int(instruction, 16))
 
     def initialize_store(self, initial_pc: Address) -> SymbolicStore:
         raise NotImplemented
+
+    def entry_point(self):
+        addresses = set()
+
+        response = self.gdb.write(f"info files")
+        for i in filter(lambda r: r["type"] == "console" and "Entry point" in r["payload"], response):
+            if (m := parse_entry_point.match(i["payload"])) is not None:
+                addresses.add(Address(int(m.group(1), 16)))
+
+        if len(addresses) > 1:
+            raise ValueError(f"Somehow got multiple entry point addresses")
+        elif len(addresses) == 0:
+            return None
+        else:
+            return addresses.pop()
