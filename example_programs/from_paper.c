@@ -1,5 +1,6 @@
+#include <assert.h>
 
-void foobar( int a , int b ) {
+void foobar(int a, int b) {
     int x = 1, y = 0;
 
     if (a != 0) {
@@ -10,3 +11,5 @@ void foobar( int a , int b ) {
     }
     assert(x - y != 0);
 }
+
+int main() {}

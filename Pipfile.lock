@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "0faa3a83add61d9f2574e21672426a42dccc6680b7259222484b29cc765b8dd2"
+            "sha256": "fb5ff8082fb09cd6ad07235553f7337f8dfab017b05d1a7329650072786fb39b"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -44,8 +44,16 @@
             "hashes": [
                 "sha256:b1bead90b70cf6ec3f0710ae53a525360fa360d306a86583adc6bf83a4db537d"
             ],
-            "markers": "python_version >= '2.6' and python_version not in '3.0, 3.1, 3.2'",
+            "markers": "python_version >= '2.6' and python_version not in '3.0, 3.1, 3.2, 3.3'",
             "version": "==0.18.2"
+        },
+        "pyelftools": {
+            "hashes": [
+                "sha256:1509d30756a14a8c9a6670778144fb9a04b311751ddac019dcc0c2f28da03ccc",
+                "sha256:53e5609cac016471d40bd88dc410cd90755942c25e58a61021cfdf7abdfeacff"
+            ],
+            "index": "pypi",
+            "version": "==0.28"
         },
         "pysmt": {
             "hashes": [

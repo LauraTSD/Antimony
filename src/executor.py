@@ -3,8 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional
 
-import claripy
-
+from src.constraints import BitVector
 from src.program import Address, Program
 from src.riscv.instructions import *
 from src.symbolic_store import SymbolicStore
@@ -109,25 +108,50 @@ class SingleExecutor(Executor):
 
             # TODO: Shifts
 
-            case Slt(_, _, rdest) | Sltu(_, _, rdest) | Slti(_, _, rdest) | Sltiu(_, _, rdest):
-                if self.ststate.take_slt_branch is not None:
-                    if self.ststate.take_slt_branch:
-                        self.store.set_register(rdest, claripy.BVV(1, 64))
-                    else:
-                        self.store.set_register(rdest, claripy.BVV(0, 64))
+            case Slt(_, _, rdest) | Sltu(_, _, rdest) | Slti(_, _, rdest) | Sltiu(_, _, rdest) if self.ststate.take_slt_branch is not None:
+                if self.ststate.take_slt_branch:
+                    self.store.set_register(rdest, BitVector(1, 64))
+                else:
+                    self.store.set_register(rdest, BitVector(0, 64))
 
-                    return self.advance()
+                return self.advance()
+
+            case Slt(ra, rb, _) | Sltu(ra, rb, _):
+                ra = self.store.get_register(ra)
+                rb = self.store.get_register(rb)
 
                 return BranchedExecutor(
-                    (
-                      SingleExecutor(self.program, self.store.copy(), ststate=ShortTermState(True), depth=self.depth + 1),
-                      SingleExecutor(self.program, self.store.copy(), ststate=ShortTermState(False), depth=self.depth + 1),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra < rb),
+                        ststate=ShortTermState(True), depth=self.depth + 1
+                    ),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra >= rb),
+                        ststate=ShortTermState(False), depth=self.depth + 1
+                    ),
+                )
+            case Slti(ra, immediate, _) | Sltiu(ra, immediate, _):
+                ra = self.store.get_register(ra)
+                rb = BitVector(immediate, 12).sign_extend(64)
+
+                return BranchedExecutor(
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra < rb),
+                        ststate=ShortTermState(True), depth=self.depth + 1
+                    ),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra >= rb),
+                        ststate=ShortTermState(False), depth=self.depth + 1
                     ),
                 )
 
             case Addi(ra, immediate, rdest):
                 ra = self.store.get_register(ra)
-                rb = claripy.BVV(immediate, 12).sign_extend(64)
+                rb = BitVector(immediate, 12).sign_extend(64)
 
                 # TODO: integer overflow?
                 self.store.set_register(rdest, ra + rb)
@@ -136,7 +160,7 @@ class SingleExecutor(Executor):
 
             case Xori(ra, immediate, rdest):
                 ra = self.store.get_register(ra)
-                rb = claripy.BVV(immediate, 12).sign_extend(64)
+                rb = BitVector(immediate, 12).sign_extend(64)
 
                 # TODO: integer overflow?
                 self.store.set_register(rdest, ra ^ rb)
@@ -145,7 +169,7 @@ class SingleExecutor(Executor):
 
             case Ori(ra, immediate, rdest):
                 ra = self.store.get_register(ra)
-                rb = claripy.BVV(immediate, 12).sign_extend(64)
+                rb = BitVector(immediate, 12).sign_extend(64)
 
                 # TODO: integer overflow?
                 self.store.set_register(rdest, ra | rb)
@@ -154,7 +178,7 @@ class SingleExecutor(Executor):
 
             case Andi(ra, immediate, rdest):
                 ra = self.store.get_register(ra)
-                rb = claripy.BVV(immediate, 12).sign_extend(64)
+                rb = BitVector(immediate, 12).sign_extend(64)
 
                 # TODO: integer overflow?
                 self.store.set_register(rdest, ra & rb)
@@ -182,9 +206,9 @@ class SingleExecutor(Executor):
 
 
 class BranchedExecutor(Executor):
-    executors: tuple[Executor, Executor]
+    executors: tuple[Executor, ...]
 
-    def __init__(self, executors: tuple[Executor, Executor], ststate=None, depth=0):
+    def __init__(self, *executors: Executor, ststate=None, depth=0):
         super().__init__(ststate, depth)
         self.executors = executors
 
