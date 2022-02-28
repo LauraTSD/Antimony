@@ -89,9 +89,9 @@ def interpret_signed(value: int, length: int):
     value = BitAccess(value)
 
     if value[length-1] == 1:
-        return value - (1 << length)
+        return int(value - (1 << length))
     else:
-        return value
+        return int(value)
 
 
 class InvalidInstruction(Exception):

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, IO, Optional
 from src.address import Address
 from src.riscv.instructions import RiscvInstruction
 import subprocess
-from elftools.elf.sections import Symbol
 from pygdbmi.gdbcontroller import GdbController
 from functools import cache
 
@@ -130,7 +129,7 @@ class Program:
 
     @cache  # make sure that gdb is called as little as possible
     # TODO: maybe read multiple instructions at once to improve speed
-    def get_instruction_bytes(self, pc: Address) -> RiscvInstruction:
+    def get_instruction(self, pc: Address) -> RiscvInstruction:
         response = self.gdb.write(f"x/1wx {hex(pc)}")
 
         for i in filter(lambda r: r["type"] == "console", response):

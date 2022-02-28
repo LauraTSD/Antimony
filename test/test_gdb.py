@@ -16,7 +16,7 @@ class Test(unittest.TestCase):
         program = Program.from_c_string("int main(){ return 1; }", debug=True)
         entry = program.entry_point()
         for i in range(entry, entry + 16, 4):
-            print(program.get_instruction_bytes(i))
+            print(program.get_instruction(i))
         """
         │   0x1048c <main>                  addi    sp,sp,-16                          │
         │   0x10490 <main+4>                sd      s0,8(sp)                           │

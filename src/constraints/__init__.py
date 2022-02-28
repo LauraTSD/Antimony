@@ -253,7 +253,7 @@ class Neq(Constraint):
         self.b = b
 
 
-class GreaterThan(Constraint):
+class GreaterThan(BooleanConstraint):
     def __init__(self, a: Constraint, b: Constraint, signed=True):
         super().__init__()
 
@@ -262,7 +262,7 @@ class GreaterThan(Constraint):
         self.signed = signed
 
 
-class LessThan(Constraint):
+class LessThan(BooleanConstraint):
     def __init__(self, a: Constraint, b: Constraint, signed=True):
         super().__init__()
 

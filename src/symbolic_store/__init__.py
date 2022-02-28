@@ -49,7 +49,7 @@ class SymbolicStore:
         self.pc = pc
 
     def advance_pc(self):
-        self.pc += 1
+        self.pc += 4
 
     def copy(self) -> SymbolicStore:
         return SymbolicStore(self.pc, copy.copy(self.registers), copy.copy(self.memory))
