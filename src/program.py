@@ -7,11 +7,13 @@ import tempfile
 from typing import TYPE_CHECKING, IO, Optional
 
 from src.address import Address
-from src.instruction_cache import InstructionCache
 from src.riscv.instructions import RiscvInstruction
 import subprocess
 from elftools.elf.sections import Symbol
 from pygdbmi.gdbcontroller import GdbController
+from functools import cache
+
+
 
 from src.riscv.parse import parse_instruction
 
@@ -37,8 +39,6 @@ class Symbol(str):
 class Program:
     file: IO  # to keep temporary files alive and not gc them
     gdb: GdbController
-
-    cache: InstructionCache
 
     def __init__(self, b: bytes):
         f = tempfile.NamedTemporaryFile("w+b")
@@ -119,6 +119,7 @@ class Program:
         else:
             return addresses.pop()
 
+    @cache
     def get_instruction_disassembly_string(self, pc: Address) -> str:
         response = self.gdb.write(f"disassemble {hex(pc)}, +1")
 
@@ -127,6 +128,8 @@ class Program:
                 instruction = m.group(1)
                 return instruction.strip().replace("\\t", " ").replace("\\n", " ")
 
+    @cache  # make sure that gdb is called as little as possible
+    # TODO: maybe read multiple instructions at once to improve speed
     def get_instruction_bytes(self, pc: Address) -> RiscvInstruction:
         response = self.gdb.write(f"x/1wx {hex(pc)}")
 
