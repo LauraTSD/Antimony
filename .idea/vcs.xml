@@ -2,5 +2,10 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/riscv-gnu-toolchain" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/riscv-gnu-toolchain/riscv-binutils" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/riscv-gnu-toolchain/riscv-gcc" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/riscv-gnu-toolchain/riscv-gdb" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/riscv-gnu-toolchain/riscv-glibc" vcs="Git" />
   </component>
 </project>

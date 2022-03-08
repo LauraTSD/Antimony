@@ -103,10 +103,10 @@ class BitVector(Value):
         return self.value
 
     def as_claripy_constraint(self) -> claripy.Base:
-        pass
+        claripy.BV(self.value, self.bits)
 
     def possible_values(self) -> Iterator[Value]:
-        pass
+        raise NotImplemented
 
 
 class BoundedPointer(Value):
@@ -174,6 +174,14 @@ class And(Constraint):
         self.a = a
         self.b = b
 
+    def as_integer(self):
+        return int(self.a and self.b)
+
+    def as_claripy_constraint(self) -> claripy.Base:
+        return claripy.And(self.a, self.b)
+
+    def possible_values(self) -> list[Value]:
+        return [True, False]
 
 class Or(Constraint):
     def __init__(self, a: BooleanConstraint, b: BooleanConstraint):
@@ -182,28 +190,64 @@ class Or(Constraint):
         self.a = a
         self.b = b
 
+    def as_integer(self):
+        return int(self.a or self.b)
+
+    def as_claripy_constraint(self) -> claripy.Base:
+        return claripy.Or(self.a, self.b)
+
+    def possible_values(self) -> list[Value]:
+        return [True, False]
 
 class Not(BooleanConstraint):
-    def __init__(self, a: BooleanConstraint):
+    def __init__(self, a: BooleanConstraint, b: BooleanConstraint):
         super().__init__()
 
         self.a = a
+
+    def as_integer(self):
+        return 1 - int(self.a)
+
+    def as_claripy_constraint(self) -> claripy.Base:
+        return claripy.Not(a)
+
+    def possible_values(self) -> list[Value]:
+        return [True, False]
 
 
 class BitwiseXor(Constraint):
-    def __init__(self, a: Constraint, b: Constraint):
+    def __init__(self, a: BooleanConstraint, b: BooleanConstraint):
         super().__init__()
 
         self.a = a
         self.b = b
+
+    def as_integer(self):
+        return int(self.a ^ self.b)
+
+    def as_claripy_constraint(self) -> claripy.Base:
+        return claripy.Or(claripy.And(self.a, claripy.Not(self.b)), claripy.And(self.b, claripy.Not(self.a)))
+
+    def possible_values(self) -> list[Value]:
+        return [True, False]
 
 
 class BitwiseAnd(Constraint):
-    def __init__(self, a: Constraint, b: Constraint):
+    def __init__(self, a: BooleanConstraint, b: BooleanConstraint):
         super().__init__()
 
         self.a = a
         self.b = b
+
+    def as_integer(self):
+        return int(self.a & self.b)
+
+    def as_claripy_constraint(self) -> claripy.Base:
+        #not sure if this should be something else
+        return claripy.And(self.value, self.bits)
+
+    def possible_values(self) -> list[Value]:
+        return [True, False]
 
 
 class BitwiseOr(BooleanConstraint):
