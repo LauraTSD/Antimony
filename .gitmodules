@@ -1,0 +1,6 @@
+[submodule "example_programs/riscv-gnu-toolchain"]
+	path = example_programs/riscv-gnu-toolchain
+	url = git@github.com:riscv-collab/riscv-gnu-toolchain.git
+[submodule "riscv-gnu-toolchain"]
+	path = riscv-gnu-toolchain
+	url = git@github.com:riscv-collab/riscv-gnu-toolchain.git

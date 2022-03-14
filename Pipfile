@@ -5,6 +5,8 @@ name = "pypi"
 
 [packages]
 claripy = "*"
+pyelftools = "*"
+pygdbmi = "*"
 
 [dev-packages]
 
