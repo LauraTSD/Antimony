@@ -24,6 +24,12 @@ class SymbolicStore:
         self.path_constraints.append(constraint)
         return self
 
+    def get_byte(self, address: Address) -> Constraint:
+        return self.memory[address]
+
+    def set_byte(self, address: Address, value: Constraint):
+        self.memory[address] = value
+
     def get_register(self, reg: RiscvRegister) -> Constraint:
         if reg == RiscvRegister.Zero:
             return BitVector(0, 64)

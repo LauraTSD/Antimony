@@ -151,6 +151,7 @@ class SingleExecutor(Executor):
                         ststate=ShortTermState(False), depth=self.depth + 1
                     ),
                 )
+
             case Slti(ra, immediate, _) | Sltiu(ra, immediate, _):
                 ra = self.store.get_register(ra)
                 rb = BitVector(immediate, 12).sign_extend(64)
@@ -207,19 +208,156 @@ class SingleExecutor(Executor):
             # TODO: Shift
 
             case Lb(ra, immediate, rdest):
-                pass
-                # ra = self.store.get_register(ra)
-                # rb = claripy.BVV(immediate, 12).sign_extend(64)
-                # address = ra + rb
-                #
-                # self.store.bounds_check(address)
-                #
-                #
-                #
-                #
-                # self.store.set_register(rdest, ra & rb)
+                ra = self.store.get_register(ra)
 
-                return self.advance()
+                executors = []
+                for value in ra.possible_values():
+                    store = self.store.copy().with_path_constraint(ra == value)
+
+                    store.set_register(rdest, store.get_byte(value + immediate).sign_extend(64))
+
+                    executors.append(SingleExecutor(
+                        self.program,
+                        store,
+                    ).advance_pc())
+
+                return BranchedExecutor(*executors)
+
+            case Lh(ra, immediate, rdest):
+                ra = self.store.get_register(ra)
+
+                executors = []
+                for value in ra.possible_values():
+                    store = self.store.copy().with_path_constraint(ra == value)
+
+                    store.set_register(
+                        rdest,
+                        (
+                            store.get_byte(value + immediate).zero_extend(16) |
+                            store.get_byte(value + immediate + 1).zero_extend(16).shift_left(BitVector(8, 16))
+                        ).sign_extend(64)
+                    )
+
+                    executors.append(SingleExecutor(
+                        self.program,
+                        store,
+                    ).advance_pc())
+
+                return BranchedExecutor(*executors)
+
+            case Lw(ra, immediate, rdest):
+                ra = self.store.get_register(ra)
+
+                executors = []
+                for value in ra.possible_values():
+                    store = self.store.copy().with_path_constraint(ra == value)
+
+                    store.set_register(
+                        rdest,
+                        (
+                            store.get_byte(value + immediate).zero_extend(32) |
+                            store.get_byte(value + immediate + 1).zero_extend(32).shift_left(BitVector(8, 32)) |
+                            store.get_byte(value + immediate + 2).zero_extend(32).shift_left(BitVector(16, 32)) |
+                            store.get_byte(value + immediate + 3).zero_extend(32).shift_left(BitVector(24, 32))
+                        ).sign_extend()
+                    )
+
+                    executors.append(SingleExecutor(
+                        self.program,
+                        store,
+                    ).advance_pc())
+
+                return BranchedExecutor(*executors)
+
+            case Ld(ra, immediate, rdest):
+                ra = self.store.get_register(ra)
+
+                executors = []
+                for value in ra.possible_values():
+                    store = self.store.copy().with_path_constraint(ra == value)
+
+                    store.set_register(
+                        rdest,
+                        store.get_byte(value + immediate).zero_extend(64) |
+                        store.get_byte(value + immediate + 1).zero_extend(64).shift_left(BitVector(8, 64)) |
+                        store.get_byte(value + immediate + 2).zero_extend(64).shift_left(BitVector(16, 64)) |
+                        store.get_byte(value + immediate + 3).zero_extend(64).shift_left(BitVector(24, 64)) |
+                        store.get_byte(value + immediate + 4).zero_extend(64).shift_left(BitVector(32, 64)) |
+                        store.get_byte(value + immediate + 5).zero_extend(64).shift_left(BitVector(40, 64)) |
+                        store.get_byte(value + immediate + 6).zero_extend(64).shift_left(BitVector(48, 64)) |
+                        store.get_byte(value + immediate + 7).zero_extend(64).shift_left(BitVector(56, 64))
+                    )
+
+                    executors.append(SingleExecutor(
+                        self.program,
+                        store,
+                    ).advance_pc())
+
+                return BranchedExecutor(*executors)
+
+            case Lbu(ra, immediate, rdest):
+                ra = self.store.get_register(ra)
+
+                executors = []
+                for value in ra.possible_values():
+                    store = self.store.copy().with_path_constraint(ra == value)
+
+                    store.set_register(rdest, store.get_byte(value + immediate).zero_extend(64))
+
+                    executors.append(SingleExecutor(
+                        self.program,
+                        store,
+                    ).advance_pc())
+
+                return BranchedExecutor(*executors)
+
+            case Lhu(ra, immediate, rdest):
+                ra = self.store.get_register(ra)
+
+                executors = []
+                for value in ra.possible_values():
+                    store = self.store.copy().with_path_constraint(ra == value)
+
+                    store.set_register(
+                        rdest,
+                        (
+                            store.get_byte(value + immediate).zero_extend(16) |
+                            store.get_byte(value + immediate + 1).zero_extend(16).shift_left(BitVector(8, 16))
+                        ).zero_extend(64)
+                    )
+
+                    executors.append(SingleExecutor(
+                        self.program,
+                        store,
+                    ).advance_pc())
+
+                return BranchedExecutor(*executors)
+
+            case Lwu(ra, immediate, rdest):
+                ra = self.store.get_register(ra)
+
+                executors = []
+                for value in ra.possible_values():
+                    store = self.store.copy().with_path_constraint(ra == value)
+
+                    store.set_register(
+                        rdest,
+                        (
+                            store.get_byte(value + immediate).zero_extend(32) |
+                            store.get_byte(value + immediate + 1).zero_extend(32).shift_left(BitVector(8, 32)) |
+                            store.get_byte(value + immediate + 2).zero_extend(32).shift_left(BitVector(16, 32)) |
+                            store.get_byte(value + immediate + 3).zero_extend(32).shift_left(BitVector(24, 32))
+                        ).zero_extend()
+                    )
+
+                    executors.append(SingleExecutor(
+                        self.program,
+                        store,
+                    ).advance_pc())
+
+                return BranchedExecutor(*executors)
+
+            # TODO: Stores
 
             case Beq(ra, rb, immediate):
                 ra = self.store.get_register(ra)
@@ -329,12 +467,12 @@ class SingleExecutor(Executor):
                 return BranchedExecutor(*executors)
 
             case Lui(immediate, rdest):
-                self.store.set_register(rdest, BitVector(immediate, 64).shift_left(BitVector(12, 64)) + self.store.get_pc())
+                self.store.set_register(rdest, BitVector(immediate, 64))
 
             case Auipc(immediate, rdest):
                 self.store.set_register(
                     rdest,
-                    BitVector(immediate, 64).shift_left(BitVector(12, 64)) + BitVector(self.store.get_pc(), 64)
+                    BitVector(immediate, 64) + BitVector(self.store.get_pc(), 64)
                 )
 
             case _:
