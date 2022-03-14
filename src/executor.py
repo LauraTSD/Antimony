@@ -61,6 +61,24 @@ class SingleExecutor(Executor):
         self.ststate = ShortTermState()
         return self
 
+    def jump_offset(self, offset: int) -> SingleExecutor:
+        """
+        Resets self for the next instruction
+        """
+
+        self.store.set_pc_offset(offset)
+        self.ststate = ShortTermState()
+        return self
+
+    def jump(self, offset: int) -> SingleExecutor:
+        """
+        Resets self for the next instruction
+        """
+
+        self.store.set_pc(offset)
+        self.ststate = ShortTermState()
+        return self
+
     def step(self) -> Executor:
         instruction = self.program.get_instruction(self.pc)
 
@@ -202,6 +220,123 @@ class SingleExecutor(Executor):
                 # self.store.set_register(rdest, ra & rb)
 
                 return self.advance()
+
+            case Beq(ra, rb, immediate):
+                ra = self.store.get_register(ra)
+                rb = self.store.get_register(rb)
+
+                return BranchedExecutor(
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra != rb),
+                    ).advance(),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra == rb),
+                    ).jump_offset(immediate),
+                )
+
+            case Bneq(ra, rb, immediate):
+                ra = self.store.get_register(ra)
+                rb = self.store.get_register(rb)
+
+                return BranchedExecutor(
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra == rb),
+                    ).advance(),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra != rb),
+                    ).jump_offset(immediate),
+                )
+
+            case Blt(ra, rb, immediate):
+                ra = self.store.get_register(ra)
+                rb = self.store.get_register(rb)
+
+                return BranchedExecutor(
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.greater_than_or_eq(rb, True)),
+                    ).advance(),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.less_than(rb, True)),
+                    ).jump_offset(immediate),
+                )
+
+            case Bge(ra, rb, immediate):
+                ra = self.store.get_register(ra)
+                rb = self.store.get_register(rb)
+
+                return BranchedExecutor(
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.less_than(rb, True)),
+                    ).advance(),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.greater_than_or_eq(rb, True)),
+                    ).jump_offset(immediate),
+                )
+
+            case Bltu(ra, rb, immediate):
+                ra = self.store.get_register(ra)
+                rb = self.store.get_register(rb)
+
+                return BranchedExecutor(
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.greater_than_or_eq(rb, False)),
+                    ).advance(),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.less_than(rb, False)),
+                    ).jump_offset(immediate),
+                )
+
+            case Bgeu(ra, rb, immediate):
+                ra = self.store.get_register(ra)
+                rb = self.store.get_register(rb)
+
+                return BranchedExecutor(
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.less_than(rb, False)),
+                    ).advance(),
+                    SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra.greater_than_or_eq(rb, False)),
+                    ).jump_offset(immediate),
+                )
+
+            case Jal(immediate, rdest):
+                self.store.set_register(rdest, BitVector(self.store.get_pc(), 64) + BitVector(4, 64))
+                return self.jump_offset(immediate)
+
+            case Jalr(ra, immediate, rdest):
+                self.store.set_register(rdest, BitVector(self.store.get_pc(), 64) + BitVector(4, 64))
+                ra = self.store.get_register(ra)
+
+                executors = []
+                for value in ra.possible_values():
+                    executors.append(SingleExecutor(
+                        self.program,
+                        self.store.copy().with_path_constraint(ra == value)
+                    ).jump(immediate + value.as_integer()))
+
+                return BranchedExecutor(*executors)
+
+            case Lui(immediate, rdest):
+                self.store.set_register(rdest, BitVector(immediate, 64).shift_left(BitVector(12, 64)) + self.store.get_pc())
+
+            case Auipc(immediate, rdest):
+                self.store.set_register(
+                    rdest,
+                    BitVector(immediate, 64).shift_left(BitVector(12, 64)) + BitVector(self.store.get_pc(), 64)
+                )
+
             case _:
                 raise InvalidInstruction()
 

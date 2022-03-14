@@ -48,6 +48,12 @@ class SymbolicStore:
     def set_pc(self, pc: int):
         self.pc = pc
 
+    def get_pc(self):
+        return self.pc
+
+    def set_pc_offset(self, offset: int):
+        self.pc += offset
+
     def advance_pc(self):
         self.pc += 4
 

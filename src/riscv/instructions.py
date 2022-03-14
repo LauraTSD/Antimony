@@ -226,7 +226,7 @@ class Jalr(IType):
 
 
 @dataclass
-class Lui(UType):
+class   Lui(UType):
     pass
 
 

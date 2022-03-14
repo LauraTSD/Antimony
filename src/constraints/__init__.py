@@ -69,11 +69,17 @@ class Constraint(ABC):
     def __invert__(self):
         return BitwiseNot(self)
 
-    def __add__(self, other: Constraint):
+    def __add__(self, other: Constraint) -> Constraint:
         return Add(self, other)
 
-    def __sub__(self, other: Constraint):
+    def __sub__(self, other: Constraint) -> Constraint:
         return Sub(self, other)
+
+    def shift_left(self, other: Constraint, arithmetic: bool = False) -> Constraint:
+        return ShiftLeft(self, other, arithmetic)
+
+    def shift_right(self, other: Constraint, arithmetic: bool = False) -> Constraint:
+        return ShiftRight(self, other, arithmetic)
 
 
 class BooleanConstraint(Constraint):
@@ -235,6 +241,24 @@ class Sub(Constraint):
 
         self.a = a
         self.b = b
+
+
+class ShiftLeft(Constraint):
+    def __init__(self, a: Constraint, b: Constraint, arithmetic: bool):
+        super().__init__()
+
+        self.a = a
+        self.b = b
+        self.arithmetic = arithmetic
+
+
+class ShiftRight(Constraint):
+    def __init__(self, a: Constraint, b: Constraint, arithmetic: bool):
+        super().__init__()
+
+        self.a = a
+        self.b = b
+        self.arithmetic = arithmetic
 
 
 class Eq(Constraint):
