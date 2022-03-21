@@ -12,4 +12,7 @@ void foobar(int a, int b) {
     assert(x - y != 0);
 }
 
-int main() {}
+int main() {
+    foobar(3, 5);
+    return 3;
+}

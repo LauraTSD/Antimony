@@ -37,8 +37,12 @@ class SymbolicExecutor:
         self.executor = SingleExecutor(program, program.initialize_store(start_address))
 
     def run(self):
+        num_instructions = 0
         while True:
+            print(f"instruction #{num_instructions}")
             self.executor = self.executor.step()
 
             if isinstance(self.executor, StoppedExecutor):
                 break
+
+            num_instructions += 1

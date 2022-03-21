@@ -77,6 +77,7 @@ def u_type(instruction: BitAccess) -> tuple[int, RiscvRegister]:
 
 def j_type(instruction: BitAccess) -> tuple[int, RiscvRegister]:
     rd = instruction[7:11]
+
     imm = instruction[12:19] << 12 | \
         instruction[20] << 11 | \
         instruction[21:30] << 1 | \
@@ -95,7 +96,12 @@ def interpret_signed(value: int, length: int):
 
 
 class InvalidInstruction(Exception):
-    pass
+    def __init__(self, instruction: int, message: str | None = None):
+        self.message = message if message is not None else ""
+        self.instruction = instruction
+
+    def __repr__(self):
+        return f"Invalid instruction: {self.instruction} ({self.message})"
 
 
 def parse_instruction(instruction: int) -> RiscvInstruction:
@@ -126,7 +132,7 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
                     return Or(ra, rb, rd)
                 case 0b111:
                     return And(ra, rb, rd)
-                case _: raise InvalidInstruction()
+                case _: raise InvalidInstruction(instruction, "arithmetic")
         case 0b0010011:
             ra, imm, rd = i_type(instruction)
 
@@ -139,11 +145,15 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
                     return Sltiu(ra, imm, rd)
                 case 0b100:
                     return Xori(ra, imm, rd)
+                case 0b101 if instruction[25:31] == 0b0000000:
+                    return Srliw(ra, imm, rd)
+                case 0b1010 if instruction[25:31] == 0b1000000:
+                    return Sraiw(ra, imm, rd)
                 case 0b110:
                     return Ori(ra, imm, rd)
                 case 0b111:
                     return Andi(ra, imm, rd)
-                case _: raise InvalidInstruction()
+                case x: raise InvalidInstruction(instruction, f"immediate {x}")
         case 0b0000011:
             ra, imm, rd = i_type(instruction)
             match instruction[12:14]:
@@ -157,7 +167,10 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
                     return Lbu(ra, imm, rd)
                 case 0b101:
                     return Lhu(ra, imm, rd)
-                case _: raise InvalidInstruction()
+                case 0b011:
+                    return Ld(ra, imm, rd)
+                case _:
+                    raise InvalidInstruction(instruction, "load")
         case 0b0100011:
             ra, rb, imm = s_type(instruction)
             match instruction[12:14]:
@@ -167,7 +180,9 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
                     return Sh(ra, rb, imm)
                 case 0b010:
                     return Sw(ra, rb, imm)
-                case _: raise InvalidInstruction()
+                case 0b011:
+                    return Sd(ra, rb, imm)
+                case _: raise InvalidInstruction(instruction, "store")
         case 0b1100011:
             ra, rb, imm = b_type(instruction)
             match instruction[12:14]:
@@ -183,7 +198,7 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
                     return Bltu(ra, rb, imm)
                 case 0b111:
                     return Bgeu(ra, rb, imm)
-                case _: raise InvalidInstruction()
+                case _: raise InvalidInstruction(instruction, "branch")
         case 0b0110111:
             return Lui(*u_type(instruction))
         case 0b0010111:
@@ -196,7 +211,7 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
             return ECall(RiscvRegister(0), 0, RiscvRegister(0))
         case 0b1110011 if instruction[20:31] == 0b000000000001:
             return EBreak(RiscvRegister(0), 0, RiscvRegister(0))
-        case _: raise InvalidInstruction()
+        case _: raise InvalidInstruction(instruction, "unknown")
 
 
 

@@ -49,6 +49,10 @@ class SingleExecutor(Executor):
         self.program = program
         self.store = store
 
+    @property
+    def pc(self) -> Address:
+        return Address(self.store.pc)
+
     def advance_pc(self):
         self.store.advance_pc()
 
@@ -59,6 +63,7 @@ class SingleExecutor(Executor):
 
         self.advance_pc()
         self.ststate = ShortTermState()
+        print(f"new pc: 0x{self.store.get_pc():08x}")
         return self
 
     def jump_offset(self, offset: int) -> SingleExecutor:
@@ -68,19 +73,25 @@ class SingleExecutor(Executor):
 
         self.store.set_pc_offset(offset)
         self.ststate = ShortTermState()
+        print(f"new pc: 0x{self.store.get_pc():08x}")
         return self
 
-    def jump(self, offset: int) -> SingleExecutor:
+    def jump(self, address: Address) -> SingleExecutor:
         """
         Resets self for the next instruction
         """
 
-        self.store.set_pc(offset)
+        self.store.set_pc(address)
         self.ststate = ShortTermState()
+        print(f"new pc: 0x{self.store.get_pc():08x}")
         return self
 
     def step(self) -> Executor:
         instruction = self.program.get_instruction(self.pc)
+
+        print("----------- execute instruction -----------")
+        print(instruction)
+        print(self.store)
 
         match instruction:
             case Add(ra, rb, rdest):
@@ -206,6 +217,16 @@ class SingleExecutor(Executor):
                 return self.advance()
 
             # TODO: Shift
+            case Srliw(ra, rdest, immediate):
+                ra = self.store.get_register(ra)
+
+                self.store.set_register(
+                    rdest,
+                    ra.slice(0, 31)
+                    .shift_left(immediate, False)
+                    .zero_extend(64)
+                )
+                return self.advance()
 
             case Lb(ra, immediate, rdest):
                 ra = self.store.get_register(ra)
@@ -219,7 +240,7 @@ class SingleExecutor(Executor):
                     executors.append(SingleExecutor(
                         self.program,
                         store,
-                    ).advance_pc())
+                    ).advance())
 
                 return BranchedExecutor(*executors)
 
@@ -241,7 +262,7 @@ class SingleExecutor(Executor):
                     executors.append(SingleExecutor(
                         self.program,
                         store,
-                    ).advance_pc())
+                    ).advance())
 
                 return BranchedExecutor(*executors)
 
@@ -265,7 +286,7 @@ class SingleExecutor(Executor):
                     executors.append(SingleExecutor(
                         self.program,
                         store,
-                    ).advance_pc())
+                    ).advance())
 
                 return BranchedExecutor(*executors)
 
@@ -273,8 +294,10 @@ class SingleExecutor(Executor):
                 ra = self.store.get_register(ra)
 
                 executors = []
+                print(ra)
                 for value in ra.possible_values():
                     store = self.store.copy().with_path_constraint(ra == value)
+                    value = value.as_integer()
 
                     store.set_register(
                         rdest,
@@ -291,7 +314,7 @@ class SingleExecutor(Executor):
                     executors.append(SingleExecutor(
                         self.program,
                         store,
-                    ).advance_pc())
+                    ).advance())
 
                 return BranchedExecutor(*executors)
 
@@ -307,7 +330,7 @@ class SingleExecutor(Executor):
                     executors.append(SingleExecutor(
                         self.program,
                         store,
-                    ).advance_pc())
+                    ).advance())
 
                 return BranchedExecutor(*executors)
 
@@ -329,7 +352,7 @@ class SingleExecutor(Executor):
                     executors.append(SingleExecutor(
                         self.program,
                         store,
-                    ).advance_pc())
+                    ).advance())
 
                 return BranchedExecutor(*executors)
 
@@ -353,7 +376,7 @@ class SingleExecutor(Executor):
                     executors.append(SingleExecutor(
                         self.program,
                         store,
-                    ).advance_pc())
+                    ).advance())
 
                 return BranchedExecutor(*executors)
 
@@ -458,6 +481,7 @@ class SingleExecutor(Executor):
                 ra = self.store.get_register(ra)
 
                 executors = []
+
                 for value in ra.possible_values():
                     executors.append(SingleExecutor(
                         self.program,
@@ -474,6 +498,7 @@ class SingleExecutor(Executor):
                     rdest,
                     BitVector(immediate, 64) + BitVector(self.store.get_pc(), 64)
                 )
+                return self.advance()
 
             case _:
                 raise InvalidInstruction()

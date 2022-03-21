@@ -99,7 +99,13 @@ class Sltu(RType):
 
 @dataclass
 class Addi(IType):
-    pass
+    def __repr__(self):
+        if self.immediate == 0 and self.rdest == RiscvRegister.X0 and self.ra == RiscvRegister.X1:
+            return "Nop"
+        elif self.immediate == 0:
+            return f"Mv(ra={self.ra}, rdest={self.rdest})"
+        else:
+            return super().__repr__()
 
 
 @dataclass
@@ -224,9 +230,15 @@ class Jal(JType):
 class Jalr(IType):
     pass
 
+    def __repr__(self):
+        if self.ra == RiscvRegister.X1 and self.rdest == RiscvRegister.X0 and self.immediate == 0:
+            return "Ret"
+        else:
+            return super().__repr__()
+
 
 @dataclass
-class   Lui(UType):
+class Lui(UType):
     pass
 
 
@@ -299,7 +311,7 @@ class Ld(IType):
 
 
 @dataclass
-class Sd(IType):
+class Sd(SType):
     pass
 
 

@@ -7,7 +7,9 @@ import tempfile
 from typing import TYPE_CHECKING, IO, Optional
 
 from src.address import Address
+from src.constraints import BitVector, BoundedPointer
 from src.riscv.instructions import RiscvInstruction
+from src.riscv.registers import RiscvRegister
 import subprocess
 from pygdbmi.gdbcontroller import GdbController
 from functools import cache
@@ -137,8 +139,21 @@ class Program:
                 instruction = m.group(1)
                 return parse_instruction(int(instruction, 16))
 
+    def get_data(self, address: Address) -> int:
+        response = self.gdb.write(f"x/1bx {hex(address)}")
+
+        for i in filter(lambda r: r["type"] == "console", response):
+            if (m := parse_instruction_bytes.match(i["payload"])) is not None:
+                instruction = m.group(1)
+                return int(instruction, 16)
+
     def initialize_store(self, initial_pc: Address) -> SymbolicStore:
-        raise NotImplemented
+        from src.symbolic_store import SymbolicStore
+        regs = {k: BitVector(0, 64) for k in RiscvRegister}
+        store = SymbolicStore(initial_pc, self, registers=regs)
+        store.set_register(RiscvRegister.Sp, store.allocate_zeroed(4 * 1024))
+
+        return store
 
     def entry_point(self):
         addresses = set()
@@ -154,3 +169,4 @@ class Program:
             return None
         else:
             return addresses.pop()
+
