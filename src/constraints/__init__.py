@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import math
 from abc import abstractmethod, ABC
-from typing import Iterator
+from typing import Hashable
 
 import claripy
 
@@ -18,7 +18,7 @@ class Constraint(ABC):
     @abstractmethod
     def as_claripy_constraint(self) -> claripy.Base: ...
     @abstractmethod
-    def possible_values(self) -> list[Value]: ...
+    def possible_values(self) -> set[Value]: ...
 
     @abstractmethod
     def __repr__(self) -> str: ...
@@ -101,15 +101,21 @@ class BooleanConstraint(Constraint, ABC):
         return Not(self)
 
 
-class Value(Constraint, ABC):
+class Value(Constraint, ABC, Hashable):
     @abstractmethod
     def as_integer(self): ...
+
+    def __hash__(self):
+        return hash(self.as_integer())
+
+    def __eq__(self, other: Value):
+        return isinstance(other, Value) and self.as_integer() == other.as_integer
 
     @abstractmethod
     def bits(self): ...
 
-    def possible_values(self) -> list[Value]:
-        return [self]
+    def possible_values(self) -> set[Value]:
+        return {self}
 
 
 class BitVector(Value):
@@ -153,6 +159,9 @@ class BoundedPointer(Value):
 
 
 class SymbolicBitVector(Constraint):
+    def __repr__(self) -> str:
+        return "symbolic bit vector"
+
     def __init__(self, value: int, bits: int):
         super().__init__()
 
@@ -168,12 +177,21 @@ class SymbolicBitVector(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return claripy.BVS(self.value, self.bits)
 
-    def possible_values(self) -> list[Value]:
+    def possible_values(self) -> set[Value]:
         raise NotImplemented
 
 
 class SymbolicBoundedPointer(Constraint):
-    def __init__(self, value: int):
+    def as_claripy_constraint(self) -> claripy.Base:
+        raise NotImplemented
+
+    def possible_values(self) -> set[Value]:
+        raise NotImplemented
+
+    def __repr__(self) -> str:
+        return "symbolic bounded pointer"
+
+    def __init__(self, _: int):
         super().__init__()
 
 
@@ -190,12 +208,11 @@ class SignExtend(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return claripy.SignExt(self.bits, self.inner.as_claripy_constraint())
 
-    def possible_values(self) -> list[Value]:
+    def possible_values(self) -> set[Value]:
         def sign_extend(value, bits):
             sign_bit = 1 << (bits - 1)
             return (value & (sign_bit - 1)) - (value & sign_bit)
-        return [BitVector(sign_extend(i.as_integer(), self.bits), self.bits) for i in self.inner.possible_values()]
-
+        return {BitVector(sign_extend(i.as_integer(), self.bits), self.bits) for i in self.inner.possible_values()}
 
 
 class ZeroExtend(Constraint):
@@ -208,8 +225,8 @@ class ZeroExtend(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return claripy.ZeroExt(self.bits, self.inner.as_claripy_constraint())
 
-    def possible_values(self) -> list[Value]:
-        return [BitVector(i.as_integer(), self.bits) for i in self.inner.possible_values()]
+    def possible_values(self) -> set[Value]:
+        return {BitVector(i.as_integer(), self.bits) for i in self.inner.possible_values()}
 
     def __repr__(self) -> str:
         return f"zext({self.inner} to {self.bits} bits)"
@@ -226,11 +243,11 @@ class Slice(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return claripy.Extract(self.end, self.start, self.inner.as_claripy_constraint())
 
-    def possible_values(self) -> list[Value]:
-        return [
+    def possible_values(self) -> set[Value]:
+        return {
             BitVector(int(BitAccess(i.as_integer())[0:31]), self.end + 1 - self.start)
             for i in self.inner.possible_values()
-        ]
+        }
 
     def __repr__(self) -> str:
         return f"{self.inner}[{self.start}:{self.end}]"
@@ -242,6 +259,12 @@ class Concat(Constraint):
 
         self.constraints = constraints
 
+    def as_claripy_constraint(self) -> claripy.Base:
+        raise NotImplemented
+
+    def possible_values(self) -> set[Value]:
+        raise NotImplemented
+
     def __repr__(self) -> str:
         return f"concat({self.constraints})"
 
@@ -252,6 +275,9 @@ class And(Constraint):
 
         self.a = a
         self.b = b
+
+    def possible_values(self) -> set[Value]:
+        return self.a.possible_values().intersection(self.b.possible_values())
 
     def as_claripy_constraint(self) -> claripy.Base:
         return claripy.And(self.a.as_claripy_constraint(), self.b.as_claripy_constraint())
@@ -270,8 +296,8 @@ class Or(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return claripy.Or(self.a.as_claripy_constraint(), self.b.as_claripy_constraint())
 
-    def possible_values(self) -> list[Value]:
-        pass
+    def possible_values(self) -> set[Value]:
+        return self.a.possible_values().union(self.b.possible_values())
 
     def __repr__(self) -> str:
         return f"({self.a} or {self.b})"
@@ -283,8 +309,11 @@ class Not(BooleanConstraint):
 
         self.a = a
 
+    def possible_values(self) -> set[Value]:
+        raise NotImplemented
+
     def as_claripy_constraint(self) -> claripy.Base:
-        return claripy.Or(self.a.as_claripy_constraint(), self.b.as_claripy_constraint())
+        return claripy.Not(self.a.as_claripy_constraint())
 
     def __repr__(self) -> str:
         return f"not({self.a})"
@@ -303,14 +332,14 @@ class BitwiseXor(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() ^ self.b.as_claripy_constraint()
 
-    def possible_values(self) -> list[Value]:
-        res = []
+    def possible_values(self) -> set[Value]:
+        res = set()
 
         for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
             if x.bits() != y.bits():
                 raise ValueError("bits not equal")
 
-            res.append(BitVector(x.as_integer() ^ y.as_integer(), x.bits()))
+            res.add(BitVector(x.as_integer() ^ y.as_integer(), x.bits()))
 
         return res
 
@@ -328,14 +357,14 @@ class BitwiseAnd(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() & self.b.as_claripy_constraint()
 
-    def possible_values(self) -> list[Value]:
-        res = []
+    def possible_values(self) -> set[Value]:
+        res = set()
 
         for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
             if x.bits() != y.bits():
                 raise ValueError("bits not equal")
 
-            res.append(BitVector(x.as_integer() & y.as_integer(), x.bits()))
+            res.add(BitVector(x.as_integer() & y.as_integer(), x.bits()))
 
         return res
 
@@ -353,14 +382,14 @@ class BitwiseOr(BooleanConstraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() | self.b.as_claripy_constraint()
 
-    def possible_values(self) -> list[Value]:
-        res = []
+    def possible_values(self) -> set[Value]:
+        res = set()
 
         for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
             if x.bits() != y.bits():
                 raise ValueError("bits not equal")
 
-            res.append(BitVector(x.as_integer() | y.as_integer(), x.bits()))
+            res.add(BitVector(x.as_integer() | y.as_integer(), x.bits()))
 
         return res
 
@@ -377,8 +406,8 @@ class BitwiseNot(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return ~self.a.as_claripy_constraint()
 
-    def possible_values(self) -> list[Value]:
-        return [BitVector(~x.as_integer(), x.bits()) for x in self.a.possible_values()]
+    def possible_values(self) -> set[Value]:
+        return {BitVector(~x.as_integer(), x.bits()) for x in self.a.possible_values()}
 
 
 class Add(Constraint):
@@ -391,14 +420,14 @@ class Add(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() + self.b.as_claripy_constraint()
 
-    def possible_values(self) -> list[Value]:
-        res = []
+    def possible_values(self) -> set[Value]:
+        res = set()
 
         for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
             if x.bits() != y.bits():
                 raise ValueError("bits not equal")
 
-            res.append(BitVector(x.as_integer() + y.as_integer(), x.bits()))
+            res.add(BitVector(x.as_integer() + y.as_integer(), x.bits()))
 
         return res
 
@@ -416,8 +445,17 @@ class Sub(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() - self.b.as_claripy_constraint()
 
-    def possible_values(self) -> list[Value]:
-        pass
+    def possible_values(self) -> set[Value]:
+        res = set()
+
+        for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
+            if x.bits() != y.bits():
+                raise ValueError("bits not equal")
+
+            res.add(BitVector(x.as_integer() - y.as_integer(), x.bits()))
+
+        return res
+
 
     def __repr__(self) -> str:
         return f"({self.a} - {self.b})"
@@ -437,11 +475,11 @@ class ShiftLeft(Constraint):
         else:
             raise ValueError("logical shift left not supported")
 
-    def possible_values(self) -> list[Value]:
-        res = []
+    def possible_values(self) -> set[Value]:
+        res = set()
 
         for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
-            res.append(BitVector(x.as_integer() << y.as_integer(), x.bits()))
+            res.add(BitVector(x.as_integer() << y.as_integer(), x.bits()))
 
         return res
 
@@ -457,6 +495,29 @@ class ShiftRight(Constraint):
         self.b = b
         self.arithmetic = arithmetic
 
+    def as_claripy_constraint(self) -> claripy.Base:
+        if self.arithmetic:
+            return self.a.as_claripy_constraint() >> self.b.as_claripy_constraint()
+        else:
+            return claripy.LShR(self.a.as_claripy_constraint(), self.b.as_claripy_constraint())
+
+    def possible_values(self) -> set[Value]:
+        if self.arithmetic:
+            res = set()
+
+            for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
+                res.add(BitVector(x.as_integer() >> y.as_integer(), x.bits()))
+
+            return res
+        else:
+            raise NotImplemented
+            # res = set()
+            #
+            # for (x, y) in itertools.product(self.a.possible_values(), self.b.possible_values()):
+            #     res.add(BitVector(x.as_integer() >> y.as_integer(), x.bits()))
+            #
+            # return res
+
     def __repr__(self) -> str:
         return f"({self.a} >> {self.b})"
 
@@ -471,8 +532,8 @@ class Eq(Constraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() == self.b.as_claripy_constraint()
 
-    def possible_values(self) -> list[Value]:
-        pass
+    def possible_values(self) -> set[Value]:
+        raise NotImplemented
 
     def __repr__(self) -> str:
         return f"({self.a} == {self.b})"
@@ -487,6 +548,9 @@ class Neq(Constraint):
 
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() != self.b.as_claripy_constraint()
+
+    def possible_values(self) -> set[Value]:
+        raise NotImplemented
 
     def __repr__(self) -> str:
         return f"({self.a} != {self.b})"
@@ -503,6 +567,9 @@ class GreaterThan(BooleanConstraint):
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() > self.b.as_claripy_constraint()
 
+    def possible_values(self) -> set[Value]:
+        raise NotImplemented
+
     def __repr__(self) -> str:
         return f"({self.a} > {self.b})"
 
@@ -514,6 +581,9 @@ class LessThan(BooleanConstraint):
         self.a = a
         self.b = b
         self.signed = signed
+
+    def possible_values(self) -> set[Value]:
+        raise NotImplemented
 
     def as_claripy_constraint(self) -> claripy.Base:
         return self.a.as_claripy_constraint() < self.b.as_claripy_constraint()

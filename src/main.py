@@ -30,7 +30,7 @@ class SymbolicExecutor:
         elif isinstance(start_symbol, Address):
             start_address = start_symbol
         elif start_symbol is None:
-            start_address = program.entry_point()
+            start_address = program.first_address
         else:
             raise TypeError(f"invalid value for parameter start_symbol: {start_symbol}")
 
@@ -39,7 +39,6 @@ class SymbolicExecutor:
     def run(self):
         num_instructions = 0
         while True:
-            print(f"instruction #{num_instructions}")
             self.executor = self.executor.step()
 
             if isinstance(self.executor, StoppedExecutor):

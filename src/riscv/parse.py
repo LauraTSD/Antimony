@@ -101,7 +101,7 @@ class InvalidInstruction(Exception):
         self.instruction = instruction
 
     def __repr__(self):
-        return f"Invalid instruction: {self.instruction} ({self.message})"
+        return f"Invalid instruction: {self.instruction:07b} ({self.message})"
 
 
 def parse_instruction(instruction: int) -> RiscvInstruction:
@@ -139,16 +139,18 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
             match instruction[12:14]:
                 case 0b000:
                     return Addi(ra, imm, rd)
+                case 0b001:
+                    return Slli(ra, instruction[20:25], rd)
                 case 0b010:
                     return Slti(ra, imm, rd)
                 case 0b011:
                     return Sltiu(ra, imm, rd)
                 case 0b100:
                     return Xori(ra, imm, rd)
-                case 0b101 if instruction[25:31] == 0b0000000:
-                    return Srliw(ra, imm, rd)
-                case 0b1010 if instruction[25:31] == 0b1000000:
-                    return Sraiw(ra, imm, rd)
+                case 0b101 if instruction[26:31] == 0b00000:
+                    return Srli(ra, instruction[20:25], rd)
+                case 0b101 if instruction[26:31] == 0b10000:
+                    return Srai(ra, instruction[20:25], rd)
                 case 0b110:
                     return Ori(ra, imm, rd)
                 case 0b111:
@@ -183,11 +185,41 @@ def parse_instruction(instruction: int) -> RiscvInstruction:
                 case 0b011:
                     return Sd(ra, rb, imm)
                 case _: raise InvalidInstruction(instruction, "store")
+        case 0b0011011:
+            ra, imm, rd = i_type(instruction)
+            match instruction[12:14]:
+                case 0b000:
+                    return Addiw(ra, imm, rd)
+                case 0b001:
+                    return Slliw(ra, instruction[20:24], rd)
+                case 0b101 if instruction[25:31] == 0b0000000:
+                    return Srliw(ra, instruction[20:24], rd)
+                case 0b101 if instruction[25:31] == 0b0100000:
+                    return Sraiw(ra, instruction[20:24], rd)
+                case _:
+                    raise InvalidInstruction(instruction, f"32 bit arithmetic {instruction[25:31]}")
+        case 0b0111011:
+            ra, rb, rd = r_type(instruction)
+
+            match instruction[12:14]:
+                case 0b000 if instruction[25:31] == 0b0000000:
+                    return Addw(ra, rb, rd)
+                case 0b000 if instruction[25:31] == 0b0100000:
+                    return Subw(ra, rb, rd)
+                case 0b001:
+                    return Sllw(ra, rb, rd)
+                case 0b101 if instruction[25:31] == 0b0000000:
+                    return Srlw(ra, rb, rd)
+                case 0b101 if instruction[25:31] == 0b0100000:
+                    return Sraw(ra, rb, rd)
+
+                case _:
+                    raise InvalidInstruction(instruction, f"32 bit arithmetic {instruction[25:31]}")
         case 0b1100011:
             ra, rb, imm = b_type(instruction)
             match instruction[12:14]:
                 case 0b000:
-                   return Beq(ra, rb, imm)
+                    return Beq(ra, rb, imm)
                 case 0b001:
                     return Bneq(ra, rb, imm)
                 case 0b100:

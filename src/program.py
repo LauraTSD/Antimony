@@ -2,30 +2,34 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import tempfile
+import time
+
+
+# KEEP ON TOP
+from pygdbmi import constants
+constants.DEFAULT_GDB_TIMEOUT_SEC = 10
 
 from typing import TYPE_CHECKING, IO, Optional
 
 from src.address import Address
-from src.constraints import BitVector, BoundedPointer
+from src.constraints import BitVector
 from src.riscv.instructions import RiscvInstruction
 from src.riscv.registers import RiscvRegister
 import subprocess
 from pygdbmi.gdbcontroller import GdbController
 from functools import cache
 
-
-
 from src.riscv.parse import parse_instruction
 
 if TYPE_CHECKING:
     from src.symbolic_store import SymbolicStore
 
-
 script_path = os.path.dirname(os.path.abspath(__file__))
 
 parse_get_symbol = re.compile(r".*Symbol .* is a .* at address 0x([0-9a-f]*)\.?\n?")
-parse_entry_point = re.compile(r".*Entry.* 0x([0-9a-f]*)\.?\n?")
+parse_current_pc = re.compile(r"=> 0x([0-9a-f]*).*\n?")
 parse_instruction_text = re.compile(r".*0x.*:(.*)\n?.*")
 parse_instruction_bytes = re.compile(r".*0x.*:.*0x(.*)\\n.*")
 
@@ -40,27 +44,48 @@ class Symbol(str):
 class Program:
     file: IO  # to keep temporary files alive and not gc them
     gdb: GdbController
+    subp: subprocess.Popen
+    first_address: Address
 
     def __init__(self, b: bytes):
         f = tempfile.NamedTemporaryFile("w+b")
         f.write(b)
         f.seek(0)
 
+        st = os.stat(f.name)
+        os.chmod(f.name, st.st_mode | stat.S_IEXEC)
+
+        cmd = ["qemu-riscv64",
+               "-g", "1234",
+               "-L", f"{script_path}/../toolchain/sysroot",
+               f.name
+               ]
+
+        print(f"running {' '.join(cmd)}")
+        self.subp = subprocess.Popen(cmd)
+
         controller = GdbController(command=[
             f"{script_path}/../toolchain/bin/riscv64-unknown-linux-gnu-gdb",
             "--interpreter=mi3",
-            f.name
         ])
 
         # write returns all startup logs from gdb. This basically discards them
-        controller.write("")
+        print(controller.write(""))
+
+        print(controller.write("target remote localhost:1234"))
+        print(controller.write(f"symbol-file {f.name}"))
 
         self.file = f
         self.gdb = controller
+        self.first_address = self.get_current_address_gdb()
 
     def __del__(self):
-        self.gdb.exit()
-        self.file.close()
+        if hasattr(self, "gdb") and self.gdb is not None:
+            self.gdb.exit()
+        if hasattr(self, "file") and self.file is not None:
+            self.file.close()
+        if hasattr(self, "subp") and self.subp is not None:
+            self.subp.kill()
 
     @classmethod
     def from_elf_bytes(cls, b: bytes) -> Program:
@@ -155,18 +180,10 @@ class Program:
 
         return store
 
-    def entry_point(self):
-        addresses = set()
+    def get_current_address_gdb(self) -> Address:
+        response = self.gdb.write(f"display/i $pc")
 
-        response = self.gdb.write(f"info files")
-        for i in filter(lambda r: r["type"] == "console" and "Entry point" in r["payload"], response):
-            if (m := parse_entry_point.match(i["payload"])) is not None:
-                addresses.add(Address(int(m.group(1), 16)))
-
-        if len(addresses) > 1:
-            raise ValueError(f"Somehow got multiple entry point addresses")
-        elif len(addresses) == 0:
-            return None
-        else:
-            return addresses.pop()
-
+        for i in filter(lambda r: r["type"] == "console", response):
+            if (m := parse_current_pc.match(i["payload"])) is not None:
+                address = m.group(1)
+                return Address(address, 16)
