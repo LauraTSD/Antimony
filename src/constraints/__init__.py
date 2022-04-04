@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import itertools
 import math
 from abc import abstractmethod, ABC
@@ -121,6 +122,7 @@ class Value(Constraint, ABC, Hashable):
 class BitVector(Value):
     def __init__(self, value: int, bits: int):
         super().__init__()
+        assert isinstance(value, int)
 
         self.value = value
         self._bits = bits
@@ -156,6 +158,15 @@ class BoundedPointer(Value):
 
     def bits(self):
         return 64
+
+    def at_end(self) -> BoundedPointer:
+        """
+        Set the pointer to the end of the bounded region
+        """
+        s = copy.copy(self)
+        s.value = s.upper - 1
+        return s
+
 
 
 class SymbolicBitVector(Constraint):

@@ -75,6 +75,10 @@ class Program:
         print(controller.write("target remote localhost:1234"))
         print(controller.write(f"symbol-file {f.name}"))
 
+        # FOR DEMO
+        # print(controller.write(f"b *0x104e0"))
+        # print(controller.write(f"c"))
+
         self.file = f
         self.gdb = controller
         self.first_address = self.get_current_address_gdb()
@@ -172,11 +176,14 @@ class Program:
                 instruction = m.group(1)
                 return int(instruction, 16)
 
+        print(response)
+        raise ValueError("no data found")
+
     def initialize_store(self, initial_pc: Address) -> SymbolicStore:
         from src.symbolic_store import SymbolicStore
         regs = {k: BitVector(0, 64) for k in RiscvRegister}
         store = SymbolicStore(initial_pc, self, registers=regs)
-        store.set_register(RiscvRegister.Sp, store.allocate_zeroed(4 * 1024))
+        store.set_register(RiscvRegister.Sp, store.allocate_zeroed(4 * 1024).at_end())
 
         return store
 

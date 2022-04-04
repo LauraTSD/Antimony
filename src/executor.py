@@ -96,7 +96,7 @@ class SingleExecutor(Executor):
 
     def step(self) -> Executor:
         instruction = self.program.get_instruction(self.pc)
-
+        # input()
         self.__class__.num_executed += 1
         print(f"----------- execute instruction #{self.__class__.num_executed} -----------")
         print(instruction)
@@ -204,6 +204,15 @@ class SingleExecutor(Executor):
 
                 # TODO: integer overflow?
                 self.store.set_register(rdest, ra + rb)
+
+                return self.advance()
+
+            case Addiw(ra, immediate, rdest):
+                ra = self.store.get_register(ra)
+                rb = BitVector(immediate, 12).sign_extend(32)
+
+                # TODO: integer overflow?
+                self.store.set_register(rdest, (ra.slice(0, 31) + rb).sign_extend(64))
 
                 return self.advance()
 
@@ -375,9 +384,12 @@ class SingleExecutor(Executor):
 
             case Lw(ra, immediate, rdest):
                 ra = self.store.get_register(ra)
+                print(ra)
+                print(ra.possible_values())
 
                 executors = []
                 for address in ra.possible_values():
+                    print(address)
                     store = self.store.copy().with_path_constraint(ra == address)
                     address = address.as_integer()
 
@@ -388,7 +400,7 @@ class SingleExecutor(Executor):
                             store.get_byte(address + immediate + 1).zero_extend(32).shift_left(BitVector(8, 32)) |
                             store.get_byte(address + immediate + 2).zero_extend(32).shift_left(BitVector(16, 32)) |
                             store.get_byte(address + immediate + 3).zero_extend(32).shift_left(BitVector(24, 32))
-                        ).sign_extend()
+                        ).sign_extend(64)
                     )
 
                     executors.append(SingleExecutor(
